@@ -123,3 +123,6 @@ create policy "Användare läser sina egna meddelanden"
 revoke all on public.profiles, public.leads, public.sites, public.messages from anon, authenticated;
 grant select on public.profiles, public.leads, public.sites, public.messages to authenticated;
 grant all on public.profiles, public.leads, public.sites, public.messages to service_role;
+
+-- Profiler för användare som redan fanns innan triggern skapades
+insert into public.profiles (id) select id from auth.users on conflict (id) do nothing;
