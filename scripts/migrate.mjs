@@ -113,5 +113,41 @@ async function checkAi() {
   }
 }
 
+// Provsökning mot Google Places. Kostar en sökning, så den körs bara när
+// SKYLTA_SMOKE_TEST=1 är satt.
+async function checkPlaces() {
+  const key = process.env.GOOGLE_PLACES_API_KEY;
+  if (!key) {
+    log("Företagssök: GOOGLE_PLACES_API_KEY saknas.");
+    return;
+  }
+  if (process.env.SKYLTA_SMOKE_TEST !== "1") {
+    log("Företagssök: nyckel finns (provsökning avstängd).");
+    return;
+  }
+  try {
+    const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": key,
+        "X-Goog-FieldMask": "places.id,places.websiteUri,places.nationalPhoneNumber",
+      },
+      body: JSON.stringify({ textQuery: "frisörer i Linköping", languageCode: "sv", regionCode: "SE", pageSize: 20 }),
+    });
+    if (!res.ok) {
+      log(`Företagssök: HTTP ${res.status} – ${(await res.text()).slice(0, 400)}`);
+      return;
+    }
+    const places = (await res.json()).places ?? [];
+    const noSite = places.filter((p) => !p.websiteUri).length;
+    const noSiteWithPhone = places.filter((p) => !p.websiteUri && p.nationalPhoneNumber).length;
+    log(`Företagssök fungerar: ${places.length} träffar, ${noSite} utan hemsida, varav ${noSiteWithPhone} med telefonnummer.`);
+  } catch (error) {
+    log(`Företagssök kunde inte nås: ${error.message}`);
+  }
+}
+
 await migrate();
 await checkAi();
+await checkPlaces();
