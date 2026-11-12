@@ -194,6 +194,11 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("Körningen misslyckades", error);
+    const status = (error as { status?: number } | null)?.status;
+    if (status === 401 || status === 402 || status === 403) {
+      // AI-tjänsten nekar: nyckel saknas eller AI Gateway är inte aktiverat på Vercel-kontot.
+      return done({ reply: "AI-tjänsten är inte påslagen än. Den som driver sajten behöver aktivera AI Gateway hos Vercel eller lägga in en egen AI-nyckel." }, 503);
+    }
     return say("Något gick fel under körningen. Försök igen om en stund.", {}, 500);
   }
 }
