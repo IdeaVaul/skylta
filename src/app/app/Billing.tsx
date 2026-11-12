@@ -26,6 +26,29 @@ export function PortalButton() {
   );
 }
 
+/** Visas när betalning inte är inkopplad än: testperiod utan kort. */
+export function TrialStart({ expired, action }: { expired: boolean; action: () => Promise<void> }) {
+  if (expired) {
+    return (
+      <section className="flex flex-col gap-3 rounded-3xl border border-line bg-white p-8">
+        <h1 className="font-display text-4xl font-extrabold tracking-tight">Din testperiod är slut</h1>
+        <p className="text-[17px] text-body">Betalda planer öppnar snart. Dina sajter finns kvar här under tiden.</p>
+      </section>
+    );
+  }
+  return (
+    <section className="flex flex-col gap-5 rounded-3xl border border-line bg-white p-8">
+      <div className="flex flex-col gap-2">
+        <h1 className="font-display text-4xl font-extrabold tracking-tight">Prova Skylta gratis</h1>
+        <p className="text-[17px] text-body">Du får 7 dagar och en hemsida, tillräckligt för att se en hel körning. Inget kort behövs.</p>
+      </div>
+      <form action={action}>
+        <button className="rounded-full bg-forest px-7 py-4 text-[17px] font-semibold text-white hover:bg-forest-dark">Starta gratis test</button>
+      </form>
+    </section>
+  );
+}
+
 export function PlanPicker() {
   const [busy, setBusy] = useState<PlanId | null>(null);
   const [error, setError] = useState<string | null>(null);

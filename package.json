@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/migrate.mjs && next build",
     "start": "next start",
     "lint": "eslint"
   },
@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "1.7.0",
     "@supabase/ssr": "0.12.7",
     "@supabase/supabase-js": "2.119.0",
+    "@vercel/oidc": "4.0.8",
     "next": "16.4.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",
@@ -26,6 +27,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
+    "pg": "8.23.1",
     "tailwindcss": "4.3.3",
     "typescript": "^5"
   }

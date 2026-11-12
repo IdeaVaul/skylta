@@ -2,6 +2,15 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function proxy(request: NextRequest) {
+  // Bekräftelselänkar som landar på startsidan (?code=…) skickas vidare.
+  if (request.nextUrl.pathname === "/") {
+    const code = request.nextUrl.searchParams.get("code");
+    if (!code) return NextResponse.next({ request });
+    const url = request.nextUrl.clone();
+    url.pathname = "/auth/confirm";
+    return NextResponse.redirect(url);
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -41,5 +50,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/app/:path*", "/login"],
+  matcher: ["/", "/app/:path*", "/login"],
 };

@@ -21,6 +21,9 @@ export type RunResult = {
   skipped: { name: string; reason: string }[];
 };
 
+/** Tak för antal körningar per dygn, så att ett konto inte kan dra obegränsade kostnader. */
+const RUNS_PER_DAY = { trial: 15, paid: 200 };
+
 function done(result: Partial<RunResult>, status = 200) {
   return NextResponse.json({ reply: "", built: [], skipped: [], ...result }, { status });
 }
@@ -43,27 +46,46 @@ export async function POST(request: Request) {
   };
 
   // 1. Plan och gränser
-  const { data: profile } = await admin
+  const { data: profile, error: profileError } = await admin
     .from("profiles")
-    .select("plan, subscription_status")
+    .select("plan, subscription_status, current_period_end")
     .eq("id", userId)
     .maybeSingle();
-  const limits = limitsFor(profile?.plan ?? "none", profile?.subscription_status ?? null);
+  if (profileError) {
+    console.error("Kunde inte läsa profilen", profileError);
+    return done({ reply: "Databasen svarar inte som den ska. Försök igen om en stund." }, 500);
+  }
+  const limits = limitsFor(profile?.plan ?? "none", profile?.subscription_status ?? null, profile?.current_period_end);
   if (!limits) {
-    return done({ reply: "Du behöver välja en plan innan vi kör. Testperioden är gratis i 7 dagar." }, 402);
+    return done({ reply: "Du behöver starta en testperiod eller välja en plan innan vi kör." }, 402);
+  }
+
+  if (!process.env.GOOGLE_PLACES_API_KEY) {
+    return done({ reply: "Företagssöket är inte påslaget än. Den som driver sajten behöver lägga in en nyckel för Google Places." }, 503);
   }
 
   const monthStart = new Date();
   monthStart.setUTCDate(1);
   monthStart.setUTCHours(0, 0, 0, 0);
-  const [{ count: leadsThisMonth }, { count: siteCount }] = await Promise.all([
-    admin.from("leads").select("id", { count: "exact", head: true }).eq("user_id", userId).gte("created_at", monthStart.toISOString()),
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const [{ count: leadsThisMonth }, { count: siteCount }, { count: runsToday }] = await Promise.all([
+    // Som lead räknas ett företag vi byggt för, inte de bortvalda.
+    admin.from("leads").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("status", "built").gte("created_at", monthStart.toISOString()),
     admin.from("sites").select("id", { count: "exact", head: true }).eq("user_id", userId),
+    admin.from("messages").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("role", "user").gte("created_at", dayAgo),
   ]);
+  const maxRuns = profile?.subscription_status === "trialing" ? RUNS_PER_DAY.trial : RUNS_PER_DAY.paid;
+  if ((runsToday ?? 0) >= maxRuns) {
+    return done({ reply: "Du har kört många sökningar i dag. Försök igen i morgon." }, 429);
+  }
   const leadsLeft = limits.leadsPerMonth - (leadsThisMonth ?? 0);
   const sitesLeft = limits.sites - (siteCount ?? 0);
   if (leadsLeft <= 0 || sitesLeft <= 0) {
-    return say("Du har nått gränsen i din plan. Uppgradera under Betalning för att fortsätta.");
+    return say(
+      profile?.subscription_status === "trialing"
+        ? "Din testperiod räcker till en hemsida, och den är redan byggd. Du hittar den under Dina sajter."
+        : "Du har nått gränsen i din plan. Uppgradera under Betalning för att fortsätta.",
+    );
   }
 
   try {
@@ -86,16 +108,15 @@ export async function POST(request: Request) {
       return say(`Jag hittade inga nya ${intent.business_type} i ${intent.city}. Prova en annan bransch eller ort.`);
     }
 
-    // 4. Sålla: titta på upp till dubbelt så många som efterfrågat
-    const considered = fresh.slice(0, Math.min(intent.count * 2, leadsLeft));
+    // 4. Sålla. Vi går igenom träffarna tills vi har så många som efterfrågats.
+    const buildCap = Math.min(intent.count, sitesLeft, leadsLeft);
     const toBuild: Place[] = [];
     const skipped: { place: Place; reason: string }[] = [];
-    const buildCap = Math.min(intent.count, sitesLeft);
-    for (const place of considered) {
+    for (const place of fresh) {
+      if (toBuild.length >= buildCap) break;
       const reason = skipReason(place, agent);
       if (reason) skipped.push({ place, reason });
-      else if (toBuild.length < buildCap) toBuild.push(place);
-      // Bra företag utöver taket sparas inte, så de kan komma med i nästa körning.
+      else toBuild.push(place);
     }
 
     // 5. Bygg sajter parallellt
@@ -104,10 +125,15 @@ export async function POST(request: Request) {
     );
 
     const built: RunResult["built"] = [];
+    let failed = 0;
     for (let i = 0; i < toBuild.length; i++) {
       const place = toBuild[i];
       const result = results[i];
-      if (result.status !== "fulfilled") continue;
+      if (result.status !== "fulfilled") {
+        failed++;
+        console.error("Kunde inte bygga sajt", place.name, result.reason);
+        continue;
+      }
 
       const { data: lead, error: leadError } = await admin
         .from("leads")
@@ -118,7 +144,11 @@ export async function POST(request: Request) {
         })
         .select("id")
         .single();
-      if (leadError || !lead) continue;
+      if (leadError || !lead) {
+        failed++;
+        console.error("Kunde inte spara lead", leadError);
+        continue;
+      }
 
       const slug = makeSlug(place.name);
       const url = `${siteUrl()}/s/${slug}`;
@@ -129,7 +159,11 @@ export async function POST(request: Request) {
         content: { ...result.value.content, phone: place.phone, address: place.address },
         outreach_message: outreach,
       });
-      if (siteError) continue;
+      if (siteError) {
+        failed++;
+        console.error("Kunde inte spara sajt", siteError);
+        continue;
+      }
       built.push({ name: place.name, url, phone: place.phone, message: outreach });
     }
 
@@ -143,10 +177,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const reply =
-      built.length > 0
-        ? `Klart! Jag byggde ${built.length} ${built.length === 1 ? "sajt" : "sajter"}${skipped.length ? ` och hoppade över ${skipped.length} företag` : ""}.`
-        : `Jag hittade inget värt att bygga för den här gången${skipped.length ? `, men hoppade över ${skipped.length} företag` : ""}. Prova en annan bransch eller ort.`;
+    const skippedNote = skipped.length ? ` och hoppade över ${skipped.length} företag` : "";
+    let reply: string;
+    if (built.length > 0) {
+      reply = `Klart! Jag byggde ${built.length} ${built.length === 1 ? "sajt" : "sajter"}${skippedNote}.`;
+      if (failed > 0) reply += ` ${failed} gick inte att bygga den här gången.`;
+    } else if (failed > 0) {
+      reply = "Jag hittade företag men kunde inte bygga sajterna. Det är ett tekniskt fel hos oss, försök igen om en stund.";
+    } else {
+      reply = `Jag hittade inget att bygga för den här gången${skipped.length ? `, och hoppade över ${skipped.length} företag` : ""}. Prova en annan bransch eller ort.`;
+    }
 
     return say(reply, {
       built,

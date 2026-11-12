@@ -1,9 +1,25 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
+import { getVercelOidcToken } from "@vercel/oidc";
 import { z } from "zod";
 import type { Place } from "./places";
 
-const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5-5";
+/**
+ * Två sätt att nå AI:
+ * - ANTHROPIC_API_KEY satt: direkt mot Anthropic.
+ * - Annars: Vercel AI Gateway, som på Vercel loggar in med projektets egen
+ *   token. Då behövs ingen nyckel alls. Kostnaden hamnar på Vercel-kontot.
+ */
+async function getClient(): Promise<{ client: Anthropic; model: string }> {
+  if (process.env.ANTHROPIC_API_KEY) {
+    return { client: new Anthropic(), model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5-5" };
+  }
+  const apiKey = process.env.AI_GATEWAY_API_KEY ?? (await getVercelOidcToken());
+  return {
+    client: new Anthropic({ apiKey, baseURL: "https://ai-gateway.vercel.sh" }),
+    model: process.env.AI_MODEL ?? "anthropic/claude-haiku-5.5",
+  };
+}
 
 async function callTool(
   system: string,
@@ -11,9 +27,9 @@ async function callTool(
   tool: { name: string; description: string; input_schema: Record<string, unknown> },
   maxTokens: number,
 ): Promise<unknown> {
-  const client = new Anthropic();
+  const { client, model } = await getClient();
   const res = await client.messages.create({
-    model: MODEL,
+    model,
     max_tokens: maxTokens,
     system,
     tools: [tool as Anthropic.Tool],

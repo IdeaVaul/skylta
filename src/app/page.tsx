@@ -199,7 +199,7 @@ export default function Home() {
           <div className={`${wrap} flex flex-col gap-10 py-22`}>
             <div className="flex max-w-[680px] flex-col gap-3">
               <h2 className={h2}>Testa gratis i 7 dagar.</h2>
-              <p className="text-[17px] text-body">Välj en plan och kom igång. Du betalar inget i dag. Efter 7 dagar startar din plan, om du inte avslutar innan. Priser exkl. moms.</p>
+              <p className="text-[17px] text-body">Skapa ett konto och prova utan kort. Vill du fortsätta efter 7 dagar väljer du en plan. Priser exkl. moms.</p>
             </div>
             <div className="flex flex-wrap items-stretch gap-6">
               {(Object.keys(PLANS) as PlanId[]).map((id) => {
@@ -224,7 +224,7 @@ export default function Home() {
                 );
               })}
             </div>
-            <p className="text-sm text-muted">Under testperioden ingår 1 hemsida och 2 leads, tillräckligt för att se en hel körning. Ingen bindningstid.</p>
+            <p className="text-sm text-muted">Under testperioden ingår 1 hemsida, tillräckligt för att se en hel körning. Ingen bindningstid.</p>
           </div>
         </section>
 

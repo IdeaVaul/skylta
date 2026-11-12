@@ -23,20 +23,27 @@ och ett sms per företag, och sparar allt. Sajten visas på `/s/<slug>`.
 - **Nils** bygger åt företag som saknar hemsida.
 - **Saga** bygger ett nytt förslag åt företag som redan har en hemsida.
 
-## Kom igång
+## På Vercel
+
+Projektet är kopplat till Vercel och Supabase. Vid varje produktionsbygge händer detta av sig självt:
+
+- `scripts/migrate.mjs` kör nya filer i `supabase/migrations/` mot databasen (via `POSTGRES_URL_NON_POOLING`).
+- AI-anropen går via Vercel AI Gateway med projektets egen token, så ingen AI-nyckel behövs. Kostnaden hamnar på Vercel-kontot.
+- Utan `STRIPE_SECRET_KEY` startar användaren en gratis testperiod (7 dagar, 1 hemsida) direkt i appen, utan kort.
+- `SKYLTA_OWNER_EMAIL` ger det kontot planen Start.
+
+Det enda som måste läggas in för hand är `GOOGLE_PLACES_API_KEY` (Google Cloud > Places API (New)).
+`/api/status` visar vilka delar som är inkopplade.
+
+Betalning senare: skapa tre återkommande priser i SEK i Stripe, lägg in `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
+och de tre `STRIPE_PRICE_*`, och en webhook mot `/api/stripe/webhook` med händelserna
+`customer.subscription.created`, `customer.subscription.updated` och `customer.subscription.deleted`.
+
+## Lokalt
 
 1. `npm install`
-2. Kopiera `.env.example` till `.env.local` och fyll i nycklarna.
-3. **Supabase:** skapa ett projekt och kör migrationen, antingen med `npx supabase link` + `npx supabase db push`
-   eller genom att klistra in `supabase/migrations/20261110160034_init.sql` i SQL Editor.
-   Under Authentication > Email Templates > Confirm signup, låt länken peka på
-   `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email`, och sätt Site URL till din adress.
-4. **Stripe:** skapa tre återkommande priser i SEK (Start, Proffs, Byrå) och lägg pris-ID:na i `.env.local`.
-   Lägg till en webhook mot `/api/stripe/webhook` med händelserna `customer.subscription.created`,
-   `customer.subscription.updated` och `customer.subscription.deleted`. Lokalt:
-   `stripe listen --forward-to localhost:3000/api/stripe/webhook`. Slå på kundportalen i Stripe.
-5. **Google:** aktivera Places API (New) och skapa en API-nyckel.
-6. `npm run dev`
+2. Kopiera `.env.example` till `.env.local` och fyll i. Lokalt krävs `ANTHROPIC_API_KEY`.
+3. `npm run dev`
 
 ## Säkerhet
 

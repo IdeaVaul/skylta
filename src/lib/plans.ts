@@ -32,6 +32,12 @@ export const PLANS: Record<
 
 /** Under testperioden: tillräckligt för att se en hel körning. */
 export const TRIAL_LIMITS = { leadsPerMonth: 2, sites: 1 };
+export const TRIAL_DAYS = 7;
+
+/** Utan Stripe startas testperioden direkt i appen, utan kort. */
+export function stripeEnabled() {
+  return Boolean(process.env.STRIPE_SECRET_KEY);
+}
 
 export function priceIdFor(plan: PlanId): string | undefined {
   return {
@@ -49,8 +55,11 @@ export function planForPriceId(priceId: string | undefined): PlanId | null {
   return null;
 }
 
-export function limitsFor(plan: string, status: string | null) {
-  if (status === "trialing") return TRIAL_LIMITS;
+export function limitsFor(plan: string, status: string | null, periodEnd?: string | null) {
+  if (status === "trialing") {
+    if (periodEnd && new Date(periodEnd).getTime() < Date.now()) return null; // testperioden är slut
+    return TRIAL_LIMITS;
+  }
   if (status !== "active") return null;
   const p = PLANS[plan as PlanId];
   return p ? { leadsPerMonth: p.leadsPerMonth, sites: p.sites } : null;
